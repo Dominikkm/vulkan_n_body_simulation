@@ -18,7 +18,7 @@ use vulkano::{
   }, pipeline::{
     graphics::{
       color_blend::{ColorBlendAttachmentState, ColorBlendState},
-      input_assembly::InputAssemblyState,
+      input_assembly::{InputAssemblyState, PrimitiveTopology},
       multisample::MultisampleState,
       rasterization::RasterizationState,
       vertex_input::{Vertex, VertexDefinition},
@@ -139,13 +139,16 @@ impl App {
 
     let vertices = [
       MyVertex {
-        position: [-0.5, -0.25],
+        pos: [-0.5, -0.25],
+        vel: [0.0, 0.0],
       },
       MyVertex {
-        position: [0.0, 0.5],
+        pos: [0.0, 0.5],
+        vel: [0.0, 0.0],
       },
       MyVertex {
-        position: [0.25, 0.1],
+        pos: [0.25, 0.1],
+        vel: [0.0, 0.0],
       },
     ];
 
@@ -221,10 +224,12 @@ impl ApplicationHandler for App {
         src: r"
           #version 450
 
-          layout(location = 0) in vec2 position;
+          layout(location = 0) in vec2 pos;
+          layout(location = 1) in vec2 vel;
 
           void main() {
-            gl_Position = vec4(position, 0.0, 1.0);
+            gl_Position = vec4(pos, 0.0, 1.0);
+            gl_PointSize = 5.0;
           }
         ",
       }
@@ -294,7 +299,10 @@ impl ApplicationHandler for App {
         GraphicsPipelineCreateInfo {
           stages: stages.into_iter().collect(),
           vertex_input_state: Some(vertex_input_state),
-          input_assembly_state: Some(InputAssemblyState::default()),
+          input_assembly_state: Some(InputAssemblyState {
+            topology: PrimitiveTopology::PointList,
+            ..Default::default()
+          }),
           viewport_state: Some(ViewportState::default()),
           rasterization_state: Some(RasterizationState::default()),
           multisample_state: Some(MultisampleState::default()),
@@ -463,8 +471,12 @@ impl ApplicationHandler for App {
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 struct MyVertex {
+  /// Position
   #[format(R32G32_SFLOAT)]
-  position: [f32; 2],
+  pos: [f32; 2],
+  /// Velocity
+  #[format(R32G32_SFLOAT)]
+  vel: [f32; 2],
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
