@@ -407,6 +407,7 @@ impl ApplicationHandler for App {
         src: r"
           #version 450
 
+          layout(location = 0) out vec3 fragColor;
           layout(location = 0) in vec2 pos;
           layout(location = 1) in vec2 vel;
           layout(location = 2) in float mass;
@@ -415,6 +416,32 @@ impl ApplicationHandler for App {
           void main() {
             gl_Position = vec4(pos, 0.0, 1.0);
             gl_PointSize = 5.0;
+
+            float minMass = 8e9;
+            float maxMass = 3e10;
+
+            float norm = clamp((log(mass) - log(minMass)) / (log(maxMass) - log(minMass)), 0.0, 1.0);
+
+            vec3 color;
+            if (norm < 0.25) {
+              // 0.0 - 0.25: white -> blue
+              float t = norm / 0.25;
+              color = mix(vec3(1.0), vec3(0.2, 0.4, 1.0), t);
+            } else if (norm < 0.5) {
+              // 0.25 - 0.5: blue -> green
+              float t = (norm - 0.25) / 0.25;
+              color = mix(vec3(0.2, 0.4, 1.0), vec3(0.2, 1.0, 0.2), t);
+            } else if (norm < 0.75) {
+              // 0.5 - 0.75: green -> red
+              float t = (norm - 0.5) / 0.25;
+              color = mix(vec3(0.2, 1.0, 0.2), vec3(1.0, 0.2, 0.2), t);
+            } else {
+              // 0.75 - 1.0: red -> black
+              float t = (norm - 0.75) / 0.25;
+              color = mix(vec3(1.0, 0.2, 0.2), vec3(0.0), t);
+            }
+
+            fragColor = color;
           }
         ",
       }
@@ -426,10 +453,11 @@ impl ApplicationHandler for App {
         src: r"
           #version 450
 
+          layout(location = 0) in vec3 fragColor;
           layout(location = 0) out vec4 f_color;
 
           void main() {
-            f_color = vec4(1.0, 0.0, 0.0, 1.0);
+            f_color = vec4(fragColor, 1.0);
           }
         ",
       }
