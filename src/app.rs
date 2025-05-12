@@ -90,7 +90,7 @@ use winit::{
 use std::{sync::Arc, time::SystemTime};
 
 
-const PARTICLES: usize = 4;
+const PARTICLES: usize = 5;
 
 pub struct App {
   instance: Arc<Instance>,
@@ -194,18 +194,32 @@ impl App {
       MyVertex {
         pos: [-0.5, -0.5],
         vel: [-0.2, 0.2],
+        mass: 1E10,
+        _pad: 0.0,
       },
       MyVertex {
         pos: [-0.5, 0.5],
         vel: [0.2, 0.2],
+        mass: 1E10,
+        _pad: 0.0,
       },
       MyVertex {
         pos: [0.5, 0.5],
         vel: [0.2, -0.2],
+        mass: 1E10,
+        _pad: 0.0,
       },
       MyVertex {
         pos: [0.5, -0.5],
         vel: [-0.2, -0.2],
+        mass: 1E10,
+        _pad: 0.0,
+      },
+      MyVertex {
+        pos: [0.0, 0.0],
+        vel: [0.0, 0.0],
+        mass: 2E10,
+        _pad: 0.0,
       },
     ];
 
@@ -395,6 +409,8 @@ impl ApplicationHandler for App {
 
           layout(location = 0) in vec2 pos;
           layout(location = 1) in vec2 vel;
+          layout(location = 2) in float mass;
+          layout(location = 3) in float _pad;
 
           void main() {
             gl_Position = vec4(pos, 0.0, 1.0);
@@ -680,6 +696,10 @@ struct MyVertex {
   /// Velocity
   #[format(R32G32_SFLOAT)]
   vel: [f32; 2],
+  #[format(R32_SFLOAT)]
+  mass: f32,
+  #[format(R32_SFLOAT)]
+  _pad: f32,
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
@@ -716,6 +736,7 @@ mod cs {
         struct Particle {
             vec2 pos;
             vec2 vel;
+            float mass;
         };
 
         layout(set = 0, binding = 0) buffer InParticles {
@@ -745,7 +766,7 @@ mod cs {
             if (i == j) continue;
 
             vec2 diff = inBuf.particles[j].pos - p.pos;
-            acc += normalize(diff) * 1E10 / (length2(diff) + 0.1);
+            acc += normalize(diff) * inBuf.particles[j].mass / (length2(diff) + 0.1);
           }
 
           outBuf.particles[i].vel += vec2(acc * G * push.dt * 0.1);
