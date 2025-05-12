@@ -5,17 +5,44 @@ use vulkano::{
     BufferCreateInfo,
     BufferUsage,
     Subbuffer,
-  }, command_buffer::{
+  },
+  command_buffer::{
     allocator::StandardCommandBufferAllocator,
     AutoCommandBufferBuilder,
     CommandBufferUsage,
+    CopyBufferInfo,
+    PrimaryCommandBufferAbstract,
     RenderPassBeginInfo,
     SubpassBeginInfo,
-    SubpassContents,
-  }, device::{physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags}, image::{view::ImageView, Image, ImageUsage}, instance::{Instance, InstanceCreateFlags, InstanceCreateInfo}, memory::allocator::{
+    SubpassContents
+  },
+  descriptor_set::{
+    allocator::StandardDescriptorSetAllocator,
+    DescriptorSet,
+    WriteDescriptorSet
+  },
+  device::{
+    physical::PhysicalDeviceType,
+    Device,
+    DeviceCreateInfo,
+    DeviceExtensions,
+    Queue,
+    QueueCreateInfo,
+    QueueFlags,
+  },
+  image::{view::ImageView, Image, ImageUsage},
+  instance::{
+    Instance,
+    InstanceCreateFlags,
+    InstanceCreateInfo,
+  },
+  memory::allocator::{
     AllocationCreateInfo,
-    MemoryTypeFilter, StandardMemoryAllocator,
-  }, pipeline::{
+    MemoryTypeFilter,
+    StandardMemoryAllocator,
+  },
+  pipeline::{
+    compute::ComputePipelineCreateInfo,
     graphics::{
       color_blend::{ColorBlendAttachmentState, ColorBlendState},
       input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -26,16 +53,32 @@ use vulkano::{
       GraphicsPipelineCreateInfo,
     },
     layout::PipelineDescriptorSetLayoutCreateInfo,
+    ComputePipeline,
     DynamicState,
     GraphicsPipeline,
+    Pipeline,
+    PipelineBindPoint,
     PipelineLayout,
     PipelineShaderStageCreateInfo,
-  }, render_pass::{
+  },
+  render_pass::{
     Framebuffer,
     FramebufferCreateInfo,
     RenderPass,
     Subpass,
-  }, swapchain::{acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo}, sync::{self, GpuFuture}, Validated, VulkanError, VulkanLibrary
+  },
+  swapchain::{
+    acquire_next_image,
+    Surface,
+    Swapchain,
+    SwapchainCreateInfo,
+    SwapchainPresentInfo,
+  },
+  sync::{self, GpuFuture},
+  DeviceSize,
+  Validated,
+  VulkanError,
+  VulkanLibrary,
 };
 use winit::{
   application::ApplicationHandler,
@@ -44,8 +87,10 @@ use winit::{
   window::{Window, WindowId}
 };
 
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 
+
+const PARTICLES: usize = 4;
 
 pub struct App {
   instance: Arc<Instance>,
@@ -53,6 +98,9 @@ pub struct App {
   queue: Arc<Queue>,
   command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
   vertex_buffer: Subbuffer<[MyVertex]>,
+  vertex_buffer_new: Subbuffer<[MyVertex]>,
+  compute_pipeline: Arc<ComputePipeline>,
+  descriptor_set: Arc<DescriptorSet>,
   rcx: Option<RenderContext>,
 }
 
@@ -65,6 +113,7 @@ struct RenderContext {
   framebuffers: Vec<Arc<Framebuffer>>,
   pipeline: Arc<GraphicsPipeline>,
   viewport: Viewport,
+  last_frame_time: SystemTime,
 }
 
 
@@ -132,38 +181,155 @@ impl App {
       .unwrap();
     let queue = queues.next().unwrap();
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let descriptor_set_allocator = Arc::new(StandardDescriptorSetAllocator::new(
+      device.clone(),
+      Default::default(),
+    ));
     let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
       device.clone(),
       Default::default(),
     ));
 
-    let vertices = [
+    let vertices: [MyVertex; PARTICLES] = [
       MyVertex {
-        pos: [-0.5, -0.25],
-        vel: [0.0, 0.0],
+        pos: [-0.5, -0.5],
+        vel: [-0.2, 0.2],
       },
       MyVertex {
-        pos: [0.0, 0.5],
-        vel: [0.0, 0.0],
+        pos: [-0.5, 0.5],
+        vel: [0.2, 0.2],
       },
       MyVertex {
-        pos: [0.25, 0.1],
-        vel: [0.0, 0.0],
+        pos: [0.5, 0.5],
+        vel: [0.2, -0.2],
+      },
+      MyVertex {
+        pos: [0.5, -0.5],
+        vel: [-0.2, -0.2],
       },
     ];
 
-    let vertex_buffer = Buffer::from_iter(
-      memory_allocator,
+    let temporary_accesible_buffer = Buffer::from_iter(
+      memory_allocator.clone(),
       BufferCreateInfo {
-        usage: BufferUsage::VERTEX_BUFFER,
+        usage: BufferUsage::TRANSFER_SRC,
         ..Default::default()
       },
       AllocationCreateInfo {
-        memory_type_filter: MemoryTypeFilter::PREFER_DEVICE | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+        memory_type_filter: MemoryTypeFilter::PREFER_HOST | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
         ..Default::default()
       },
       vertices,
-    ).unwrap();
+    )
+      .unwrap();
+
+    let vertex_buffer = {
+      let device_local_buffer = Buffer::new_slice::<MyVertex>(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+          usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST | BufferUsage::VERTEX_BUFFER,
+          ..Default::default()
+        },
+        AllocationCreateInfo {
+          memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+          ..Default::default()
+        },
+        PARTICLES as DeviceSize,
+      )
+        .unwrap();
+
+      let mut cbb = AutoCommandBufferBuilder::primary(
+        command_buffer_allocator.clone(),
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+      )
+        .unwrap();
+      cbb.copy_buffer(CopyBufferInfo::buffers(
+        temporary_accesible_buffer.clone(), device_local_buffer.clone()
+      ))
+        .unwrap();
+      let cb = cbb.build().unwrap();
+
+      cb.execute(queue.clone())
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
+
+      device_local_buffer
+    };
+
+    let vertex_buffer_new = {
+      let device_local_buffer = Buffer::new_slice::<MyVertex>(
+        memory_allocator,
+        BufferCreateInfo {
+          usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
+          ..Default::default()
+        },
+        AllocationCreateInfo {
+          memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+          ..Default::default()
+        },
+        PARTICLES as DeviceSize
+      )
+        .unwrap();
+
+      let mut cbb = AutoCommandBufferBuilder::primary(
+        command_buffer_allocator.clone(),
+        queue.queue_family_index(),
+        CommandBufferUsage::OneTimeSubmit,
+      )
+        .unwrap();
+      cbb.copy_buffer(CopyBufferInfo::buffers(
+        temporary_accesible_buffer.clone(), device_local_buffer.clone()
+      ))
+        .unwrap();
+      let cb = cbb.build().unwrap();
+
+      cb.execute(queue.clone())
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
+
+      device_local_buffer
+    };
+
+    let compute_pipeline = {
+      let cs = cs::load(device.clone())
+        .unwrap()
+        .entry_point("main")
+        .unwrap();
+      let stage = PipelineShaderStageCreateInfo::new(cs);
+      let layout = PipelineLayout::new(
+        device.clone(),
+        PipelineDescriptorSetLayoutCreateInfo::from_stages([&stage])
+          .into_pipeline_layout_create_info(device.clone())
+          .unwrap(),
+      )
+        .unwrap();
+
+      ComputePipeline::new(
+        device.clone(),
+        None,
+        ComputePipelineCreateInfo::stage_layout(stage, layout),
+      )
+        .unwrap()
+    };
+
+    let descriptor_set = DescriptorSet::new(
+      descriptor_set_allocator.clone(),
+      compute_pipeline.layout().set_layouts()[0].clone(),
+      [
+        WriteDescriptorSet::buffer(0, vertex_buffer.clone()),
+        WriteDescriptorSet::buffer(1, vertex_buffer_new.clone()),
+      ],
+      [],
+    )
+      .unwrap();
+
     let rcx = None;
 
     Self {
@@ -172,6 +338,9 @@ impl App {
       queue,
       command_buffer_allocator,
       vertex_buffer,
+      vertex_buffer_new,
+      compute_pipeline,
+      descriptor_set,
       rcx,
     }
   }
@@ -325,6 +494,7 @@ impl ApplicationHandler for App {
     };
     let recreate_swapchain = false;
     let previous_frame_end = Some(sync::now(self.device.clone()).boxed());
+    let last_frame_time = SystemTime::now();
 
     self.rcx = Some(RenderContext {
       window,
@@ -335,6 +505,7 @@ impl ApplicationHandler for App {
       framebuffers,
       pipeline,
       viewport,
+      last_frame_time,
     });
   }
 
@@ -358,6 +529,17 @@ impl ApplicationHandler for App {
           return;
         }
         rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+        let now = SystemTime::now();
+        let delta_time = now
+          .duration_since(rcx.last_frame_time)
+          .unwrap()
+          .as_secs_f32();
+        rcx.last_frame_time = now;
+        let push_constants = cs::PushConstants {
+          dt: delta_time,
+          count: PARTICLES as u32,
+        };
 
         if rcx.recreate_swapchain {
           let (new_swapchain, new_images) = rcx
@@ -397,6 +579,27 @@ impl ApplicationHandler for App {
           self.queue.queue_family_index(),
           CommandBufferUsage::OneTimeSubmit,
         )
+          .unwrap();
+
+        builder
+          .push_constants(self.compute_pipeline.layout().clone(), 0, push_constants)
+          .unwrap()
+          .bind_pipeline_compute(self.compute_pipeline.clone())
+          .unwrap()
+          .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            self.compute_pipeline.layout().clone(),
+            0,
+            self.descriptor_set.clone(),
+          )
+            .unwrap();
+
+        unsafe { builder.dispatch([(PARTICLES / 128).max(1) as u32, 1, 1]) }.unwrap();
+
+        builder.copy_buffer(CopyBufferInfo::buffers(
+          self.vertex_buffer_new.clone(),
+          self.vertex_buffer.clone(),
+        ))
           .unwrap();
 
         builder
@@ -498,5 +701,57 @@ fn window_size_dependent_setup(
         .unwrap()
     })
     .collect::<Vec<_>>()
+}
+
+mod cs {
+  vulkano_shaders::shader! {
+    ty: "compute",
+    src: r"
+        #version 450
+
+        const float G = 6.67408E-11;
+
+        layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+
+        struct Particle {
+            vec2 pos;
+            vec2 vel;
+        };
+
+        layout(set = 0, binding = 0) buffer InParticles {
+            Particle particles[];
+        } inBuf;
+
+        layout(set = 0, binding = 1) buffer OutParticles {
+            Particle particles[];
+        } outBuf;
+
+        layout (push_constant) uniform PushConstants {
+          float dt;
+          uint count;
+        } push;
+
+        float length2(vec2 v) {
+          return v.x * v.x + v.y * v.y;
+        }
+
+        void main() {
+          uint i = gl_GlobalInvocationID.x;
+          Particle p = inBuf.particles[i];
+
+          vec2 acc = vec2(0.0);
+
+          for (uint j = 0; j < push.count; ++j) {
+            if (i == j) continue;
+
+            vec2 diff = inBuf.particles[j].pos - p.pos;
+            acc += normalize(diff) * 1E10 / (length2(diff) + 0.1);
+          }
+
+          outBuf.particles[i].vel += vec2(acc * G * push.dt * 0.1);
+          outBuf.particles[i].pos += outBuf.particles[i].vel * push.dt;
+        }
+    ",
+  }
 }
 
