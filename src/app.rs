@@ -89,8 +89,11 @@ use winit::{
 
 use std::{sync::Arc, time::SystemTime};
 
+use crate::galaxy;
 
-const PARTICLES: usize = 5;
+
+const PARTICLES: usize = 128 * 200;
+
 
 pub struct App {
   instance: Arc<Instance>,
@@ -190,38 +193,32 @@ impl App {
       Default::default(),
     ));
 
-    let vertices: [MyVertex; PARTICLES] = [
-      MyVertex {
-        pos: [-0.5, -0.5],
-        vel: [-0.2, 0.2],
-        mass: 1E10,
-        _pad: 0.0,
-      },
-      MyVertex {
-        pos: [-0.5, 0.5],
-        vel: [0.2, 0.2],
-        mass: 1E10,
-        _pad: 0.0,
-      },
-      MyVertex {
-        pos: [0.5, 0.5],
-        vel: [0.2, -0.2],
-        mass: 1E10,
-        _pad: 0.0,
-      },
-      MyVertex {
-        pos: [0.5, -0.5],
-        vel: [-0.2, -0.2],
-        mass: 1E10,
-        _pad: 0.0,
-      },
-      MyVertex {
-        pos: [0.0, 0.0],
-        vel: [0.0, 0.0],
-        mass: 2E10,
-        _pad: 0.0,
-      },
-    ];
+    let vertices = {
+      let mut vertices_0 = galaxy::generate(
+        PARTICLES / 2,
+        5,
+        5.0,
+        0.6,
+        0.1,
+        [0.9, 0.9],
+        [0.00, 0.00],
+        1E8,
+      );
+      let mut vertices_1 = galaxy::generate(
+        PARTICLES / 2,
+        3,
+        3.0,
+        0.6,
+        0.1,
+        [-0.9, -0.9],
+        [-0.00, -0.00],
+        1E8,
+      );
+      vertices_0.append(&mut vertices_1);
+
+      vertices_0
+    };
+
 
     let temporary_accesible_buffer = Buffer::from_iter(
       memory_allocator.clone(),
@@ -415,10 +412,10 @@ impl ApplicationHandler for App {
 
           void main() {
             gl_Position = vec4(pos, 0.0, 1.0);
-            gl_PointSize = 5.0;
+            gl_PointSize = 1.0;
 
-            float minMass = 8e9;
-            float maxMass = 3e10;
+            float minMass = 0.9E5;
+            float maxMass = 2.25E5;
 
             float norm = clamp((log(mass) - log(minMass)) / (log(maxMass) - log(minMass)), 0.0, 1.0);
 
@@ -638,7 +635,8 @@ impl ApplicationHandler for App {
           )
             .unwrap();
 
-        unsafe { builder.dispatch([(PARTICLES / 128).max(1) as u32, 1, 1]) }.unwrap();
+        // TODO: Fix division
+        unsafe { builder.dispatch([(PARTICLES / 128) as u32, 1, 1]) }.unwrap();
 
         builder.copy_buffer(CopyBufferInfo::buffers(
           self.vertex_buffer_new.clone(),
@@ -715,19 +713,31 @@ impl ApplicationHandler for App {
 }
 
 
-#[derive(BufferContents, Vertex)]
+#[derive(BufferContents, Vertex, Debug)]
 #[repr(C)]
-struct MyVertex {
+pub struct MyVertex {
   /// Position
   #[format(R32G32_SFLOAT)]
   pos: [f32; 2],
   /// Velocity
   #[format(R32G32_SFLOAT)]
   vel: [f32; 2],
+  // Mass
   #[format(R32_SFLOAT)]
   mass: f32,
   #[format(R32_SFLOAT)]
   _pad: f32,
+}
+
+impl MyVertex {
+  pub fn new(pos: [f32; 2], vel: [f32; 2], mass: f32) -> Self {
+    MyVertex {
+      pos,
+      vel,
+      mass,
+      _pad: 0.0,
+    }
+  }
 }
 
 /// This function is called once during initialization, then again whenever the window is resized.
@@ -793,8 +803,13 @@ mod cs {
           for (uint j = 0; j < push.count; ++j) {
             if (i == j) continue;
 
+            
             vec2 diff = inBuf.particles[j].pos - p.pos;
-            acc += normalize(diff) * inBuf.particles[j].mass / (length2(diff) + 0.1);
+            float dist = dot(diff, diff);
+            // normalize(0.0) is undefined
+            if (dist > 1E-8) {
+              acc += normalize(diff) * inBuf.particles[j].mass / (dist + 0.1);
+            }
           }
 
           outBuf.particles[i].vel += vec2(acc * G * push.dt * 0.1);

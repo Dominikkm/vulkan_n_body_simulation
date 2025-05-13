@@ -1,4 +1,5 @@
 mod app;
+mod galaxy;
 
 
 use std::error::Error;
