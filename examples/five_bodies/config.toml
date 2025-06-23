@@ -1,0 +1,35 @@
+[constants]
+point_size = 5.0
+min_mass = 1E10
+max_mass = 2.5E10
+
+[[vertexes]]
+type = "Point"
+pos = [-0.5, -0.5]
+vel = [-0.2, 0.2]
+mass = 1E10
+
+[[vertexes]]
+type = "Point"
+pos = [-0.5, 0.5]
+vel = [0.2, 0.2]
+mass = 1E10
+
+[[vertexes]]
+type = "Point"
+pos = [0.5, 0.5]
+vel = [0.2, -0.2]
+mass = 1E10
+
+[[vertexes]]
+type = "Point"
+pos = [0.5, -0.5]
+vel = [-0.2, -0.2]
+mass = 1E10
+
+[[vertexes]]
+type = "Point"
+pos = [0.0, 0.0]
+vel = [0.0, 0.0]
+mass = 2E10
+

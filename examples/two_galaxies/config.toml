@@ -1,0 +1,27 @@
+[constants]
+point_size = 1.0
+min_mass = 0.9E5
+max_mass = 2.25E5
+
+[[vertexes]]
+type = "Galaxy"
+particles = 13_000
+arms = 5
+twist = 5.0
+max_radius = 0.6
+safety = 0.1
+center_pos = [0.9, 0.9]
+center_vel = [0.0, 0.0]
+center_mass = 1E8
+
+[[vertexes]]
+type = "Galaxy"
+particles = 13_000
+arms = 3
+twist = 3.0
+max_radius = 0.6
+safety = 0.1
+center_pos = [-0.9, -0.9]
+center_vel = [0.0, 0.0]
+center_mass = 1E8
+
