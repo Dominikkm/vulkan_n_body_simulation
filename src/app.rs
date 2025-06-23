@@ -67,6 +67,7 @@ use vulkano::{
     RenderPass,
     Subpass,
   },
+  shader::SpecializationConstant,
   swapchain::{
     acquire_next_image,
     Surface,
@@ -87,6 +88,7 @@ use winit::{
   window::{Window, WindowId},
   keyboard::{Key, NamedKey},
 };
+use foldhash::HashMap;
 
 use std::{sync::Arc, time::SystemTime};
 
@@ -408,6 +410,10 @@ impl ApplicationHandler for App {
         src: r"
           #version 450
 
+          layout(constant_id = 0) const float point = 1.0;
+          layout(constant_id = 1) const float minMass = 0.9E5;
+          layout(constant_id = 2) const float maxMass = 2.25E5;
+
           layout(location = 0) out vec3 fragColor;
           layout(location = 0) in vec2 pos;
           layout(location = 1) in vec2 vel;
@@ -416,10 +422,7 @@ impl ApplicationHandler for App {
 
           void main() {
             gl_Position = vec4(pos, 0.0, 1.0);
-            gl_PointSize = 1.0;
-
-            float minMass = 0.9E5;
-            float maxMass = 2.25E5;
+            gl_PointSize = point;
 
             float norm = clamp((log(mass) - log(minMass)) / (log(maxMass) - log(minMass)), 0.0, 1.0);
 
@@ -484,10 +487,15 @@ impl ApplicationHandler for App {
     let framebuffers = window_size_dependent_setup(&images, &render_pass);
 
     let pipeline = {
-      let vs = vs::load(self.device.clone())
-        .unwrap()
-        .entry_point("main")
-        .unwrap();
+      let raw_vs = vs::load(self.device.clone()).unwrap();
+      let mut specialization_info = HashMap::default();
+
+      specialization_info.insert(0, SpecializationConstant::F32(1.0));
+      specialization_info.insert(1, SpecializationConstant::F32(0.9E5));
+      specialization_info.insert(2, SpecializationConstant::F32(2.25E5));
+
+      let specialization = raw_vs.specialize(specialization_info).unwrap();
+      let vs = specialization.entry_point("main").unwrap();
       let fs = fs::load(self.device.clone())
         .unwrap()
         .entry_point("main")

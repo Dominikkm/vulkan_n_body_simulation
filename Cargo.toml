@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+foldhash = "0.1.5"
 rand = "0.9.1"
 rand_distr = "0.5.1"
 vulkano = "0.35.1"
