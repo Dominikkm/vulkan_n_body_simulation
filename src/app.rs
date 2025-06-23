@@ -82,9 +82,10 @@ use vulkano::{
 };
 use winit::{
   application::ApplicationHandler,
-  event::WindowEvent,
+  event::{ElementState, KeyEvent, WindowEvent},
   event_loop::{ActiveEventLoop, EventLoop},
-  window::{Window, WindowId}
+  window::{Window, WindowId},
+  keyboard::{Key, NamedKey},
 };
 
 use std::{sync::Arc, time::SystemTime};
@@ -105,6 +106,7 @@ pub struct App {
   compute_pipeline: Arc<ComputePipeline>,
   descriptor_set: Arc<DescriptorSet>,
   rcx: Option<RenderContext>,
+  paused: bool,
 }
 
 struct RenderContext {
@@ -342,6 +344,7 @@ impl App {
       .unwrap();
 
     let rcx = None;
+    let paused = false;
 
     Self {
       instance,
@@ -353,6 +356,7 @@ impl App {
       compute_pipeline,
       descriptor_set,
       rcx,
+      paused,
     }
   }
 }
@@ -572,10 +576,14 @@ impl ApplicationHandler for App {
         rcx.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         let now = SystemTime::now();
-        let delta_time = now
-          .duration_since(rcx.last_frame_time)
-          .unwrap()
-          .as_secs_f32();
+        let delta_time = if !self.paused {
+          now
+            .duration_since(rcx.last_frame_time)
+            .unwrap()
+            .as_secs_f32()
+        } else {
+          0.0
+        };
         rcx.last_frame_time = now;
         let push_constants = cs::PushConstants {
           dt: delta_time,
@@ -700,6 +708,18 @@ impl ApplicationHandler for App {
             panic!("Failed to flush future: {}", e);
           }
         }
+      }
+
+      WindowEvent::KeyboardInput {
+        event: KeyEvent {
+          logical_key: Key::Named(NamedKey::Space),
+          state: ElementState::Pressed,
+          ..
+        }
+        ,
+        ..
+      } => {
+        self.paused = !self.paused;
       }
       _ => {}
     }
