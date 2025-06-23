@@ -92,7 +92,10 @@ use foldhash::HashMap;
 
 use std::{sync::Arc, time::SystemTime};
 
-use crate::galaxy;
+use crate::{
+  galaxy,
+  config::Config,
+};
 
 
 const PARTICLES: usize = 128 * 200;
@@ -109,6 +112,7 @@ pub struct App {
   descriptor_set: Arc<DescriptorSet>,
   rcx: Option<RenderContext>,
   paused: bool,
+  config: Config,
 }
 
 struct RenderContext {
@@ -125,7 +129,7 @@ struct RenderContext {
 
 
 impl App {
-  pub fn new(event_loop: &EventLoop<()>) -> Self {
+  pub fn new(event_loop: &EventLoop<()>, config: Config) -> Self {
     let library = VulkanLibrary::new().unwrap();
     let required_extensions = Surface::required_extensions(event_loop).unwrap();
     let instance = Instance::new(
@@ -359,6 +363,7 @@ impl App {
       descriptor_set,
       rcx,
       paused,
+      config,
     }
   }
 }
@@ -489,10 +494,11 @@ impl ApplicationHandler for App {
     let pipeline = {
       let raw_vs = vs::load(self.device.clone()).unwrap();
       let mut specialization_info = HashMap::default();
+      let Config { constants } = &self.config;
 
-      specialization_info.insert(0, SpecializationConstant::F32(1.0));
-      specialization_info.insert(1, SpecializationConstant::F32(0.9E5));
-      specialization_info.insert(2, SpecializationConstant::F32(2.25E5));
+      specialization_info.insert(0, SpecializationConstant::F32(constants.point_size));
+      specialization_info.insert(1, SpecializationConstant::F32(constants.min_mass));
+      specialization_info.insert(2, SpecializationConstant::F32(constants.max_mass));
 
       let specialization = raw_vs.specialize(specialization_info).unwrap();
       let vs = specialization.entry_point("main").unwrap();

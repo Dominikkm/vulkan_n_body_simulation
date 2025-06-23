@@ -13,7 +13,7 @@ fn main() -> Result<(), impl Error> {
   let config_path = parse_args().unwrap_or("./config".into());
   let config = config::Config::new(&config_path);
   let event_loop = EventLoop::new().unwrap();
-  let mut app = app::App::new(&event_loop);
+  let mut app = app::App::new(&event_loop, config);
 
   event_loop.run_app(&mut app)
 }
