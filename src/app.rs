@@ -92,13 +92,11 @@ use foldhash::HashMap;
 
 use std::{sync::Arc, time::SystemTime};
 
-use crate::{
-  galaxy,
-  config::Config,
+use crate::config::{
+  Config,
+  Vertices,
 };
 
-
-const PARTICLES: usize = 128 * 200;
 
 
 pub struct App {
@@ -201,31 +199,12 @@ impl App {
       Default::default(),
     ));
 
-    let vertices = {
-      let mut vertices_0 = galaxy::generate(
-        PARTICLES / 2,
-        5,
-        5.0,
-        0.6,
-        0.1,
-        [0.9, 0.9],
-        [0.00, 0.00],
-        1E8,
-      );
-      let mut vertices_1 = galaxy::generate(
-        PARTICLES / 2,
-        3,
-        3.0,
-        0.6,
-        0.1,
-        [-0.9, -0.9],
-        [-0.00, -0.00],
-        1E8,
-      );
-      vertices_0.append(&mut vertices_1);
-
-      vertices_0
-    };
+    let vertices: Vec<MyVertex> = config
+      .vertexes
+      .iter()
+      .flat_map(|v| v.vertices())
+      .collect();
+    let particles = vertices.len();
 
 
     let temporary_accesible_buffer = Buffer::from_iter(
@@ -253,7 +232,7 @@ impl App {
           memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
           ..Default::default()
         },
-        PARTICLES as DeviceSize,
+        particles as DeviceSize,
       )
         .unwrap();
 
@@ -290,7 +269,7 @@ impl App {
           memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
           ..Default::default()
         },
-        PARTICLES as DeviceSize
+        particles as DeviceSize
       )
         .unwrap();
 
@@ -494,7 +473,7 @@ impl ApplicationHandler for App {
     let pipeline = {
       let raw_vs = vs::load(self.device.clone()).unwrap();
       let mut specialization_info = HashMap::default();
-      let Config { constants } = &self.config;
+      let Config { constants, .. } = &self.config;
 
       specialization_info.insert(0, SpecializationConstant::F32(constants.point_size));
       specialization_info.insert(1, SpecializationConstant::F32(constants.min_mass));
@@ -601,7 +580,7 @@ impl ApplicationHandler for App {
         rcx.last_frame_time = now;
         let push_constants = cs::PushConstants {
           dt: delta_time,
-          count: PARTICLES as u32,
+          count: self.vertex_buffer.len() as u32,
         };
 
         if rcx.recreate_swapchain {
@@ -658,7 +637,7 @@ impl ApplicationHandler for App {
             .unwrap();
 
         // TODO: Fix division
-        unsafe { builder.dispatch([(PARTICLES / 128) as u32, 1, 1]) }.unwrap();
+        unsafe { builder.dispatch([(self.vertex_buffer.len() / 128).max(1) as u32, 1, 1]) }.unwrap();
 
         builder.copy_buffer(CopyBufferInfo::buffers(
           self.vertex_buffer_new.clone(),
