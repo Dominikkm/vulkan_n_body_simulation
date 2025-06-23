@@ -48,10 +48,25 @@ git clone https://github.com/Dominikkm/vulkan_n_body_simulation.git
 cd vulkan_n_body_simulation
 cargo build --release
 ```
+### Configuration
+
+Create `config.toml` in the project root (folder with `Cargo.toml`) with your desired configuration of the simulation.
+For example configuration see [examples folder](./examples).
+
 ### Running
 
+This will run simulation with your config:
 ```bash
 cargo run --release
 ```
-> It will run the default simulation
 
+## Running examples
+
+To run examples use:
+```bash
+cargo run --example {example} --release
+```
+In place of `{example}` pick one of the examples from [examples folder](./examples) e.g.:
+```bash
+cargo run --example galaxy --release
+```
