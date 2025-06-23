@@ -636,8 +636,9 @@ impl ApplicationHandler for App {
           )
             .unwrap();
 
-        // TODO: Fix division
-        unsafe { builder.dispatch([(self.vertex_buffer.len() / 128).max(1) as u32, 1, 1]) }.unwrap();
+        let x_dispatch = (self.vertex_buffer.len() + 127) / 128;
+
+        unsafe { builder.dispatch([x_dispatch as u32, 1, 1]) }.unwrap();
 
         builder.copy_buffer(CopyBufferInfo::buffers(
           self.vertex_buffer_new.clone(),
