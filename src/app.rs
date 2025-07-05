@@ -804,10 +804,6 @@ mod cs {
           uint count;
         } push;
 
-        float length2(vec2 v) {
-          return v.x * v.x + v.y * v.y;
-        }
-
         void main() {
           uint i = gl_GlobalInvocationID.x;
           Particle p = inBuf.particles[i];
@@ -820,13 +816,13 @@ mod cs {
             
             vec2 diff = inBuf.particles[j].pos - p.pos;
             float dist = dot(diff, diff);
-            // normalize(0.0) is undefined
+
             if (dist > 1E-8) {
-              acc += normalize(diff) * inBuf.particles[j].mass / (dist + 0.1);
+              acc += G * normalize(diff) * inBuf.particles[j].mass / (dist + 0.1);
             }
           }
 
-          outBuf.particles[i].vel += vec2(acc * G * push.dt * 0.1);
+          outBuf.particles[i].vel += vec2(acc * push.dt * 0.1);
           outBuf.particles[i].pos += outBuf.particles[i].vel * push.dt;
         }
     ",
